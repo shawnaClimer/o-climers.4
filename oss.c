@@ -17,7 +17,7 @@
 #include "queue.h"
 
 //for message queue
-#define MSGSZ	12
+#define MSGSZ	20
 typedef struct msgbuf {
 	long mtype;
 	int mtext[MSGSZ];
@@ -241,6 +241,7 @@ int main(int argc, char **argv){
 	int currentns, prevns = 0;
 	//pid
 	pid_t pid;
+	int thispid;
 	int childsec, childns;//for time sent by child
 	int status;//for wait(&status)
 	int sendnext = 1;//send next process message to run
@@ -320,10 +321,12 @@ int main(int argc, char **argv){
 			}else{
 				printf("sending message to pid %d to run\n", pid);
 				//send message to run
-				sbuf.mtype = pid;
+				thispid = pid;
+				sbuf.mtype = thispid;
 				sbuf.mtext[0] = 1;//run for 1 QUANTUM
 				buf_length = sizeof(sbuf.mtext) + 1;
-				if(msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
+				if(msgsnd(msqid, &sbuf, MSGSZ, IPC_NOWAIT) < 0){
+				//if(msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
 					printf("%d, %d, %d, %d\n", msqid, sbuf.mtype);//, sbuf.mtext[0], buf_length);
 					perror("msgsnd from oss");
 					return 1;
@@ -380,7 +383,7 @@ int main(int argc, char **argv){
 					fclose(logfile);
 					
 					pid = wait(&status);//make sure child terminated
-					currentnum--;
+	//add back in	//currentnum--;
 					//find in pids[]
 					int x;
 					for(x = 0; x < numSlaves; x++){

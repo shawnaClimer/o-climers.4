@@ -15,7 +15,7 @@
 #include "constants.h"
 
 //for message queue
-#define MSGSZ	12
+#define MSGSZ	20
 typedef struct msgbuf {
 	long mtype;
 	int mtext[MSGSZ];
@@ -97,7 +97,7 @@ int main(int argc, char **argv){
 	}
 	clock = shared;
 	
-	int startSec, startNs;//start "time" for process
+	/* int startSec, startNs;//start "time" for process
 	startSec = clock[0];
 	startNs = clock[1];
 	int runTime = rand() % 100000;
@@ -106,7 +106,7 @@ int main(int argc, char **argv){
 	if(endNs > 1000000000){
 		endSec++;
 		endNs -= 1000000000;
-	}
+	} */
 	
 	//message queue
 	int msqid;
@@ -123,6 +123,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 	int mypid = getpid();
+	printf("my pid is %d\n", mypid);
 	//loop for critical section
 	int timeisup = 0;
 	int timeran = 0;
@@ -182,7 +183,8 @@ int main(int argc, char **argv){
 			buf_length = sizeof(sbuf.mtext) + 1;
 			//buf_length = 0;
 			//send message
-			if(msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
+			if(msgsnd(msqid, &sbuf, MSGSZ, IPC_NOWAIT) < 0){
+			//if(msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
 				printf("%d, %d\n", msqid, sbuf.mtype);//, sbuf.mtext[0], buf_length);
 				perror("msgsnd from user");
 				return 1;
