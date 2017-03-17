@@ -326,19 +326,24 @@ int main(int argc, char **argv){
 			sendnext = 0;
 			//check queue0
 			pid = popqueue(queue0);
+			printf("popping queue0\n");
 			if(pid == 0){
 				//queue0 is empty check queue1
+				printf("queue0 is empty\n");
 				pid = popqueue(queue1);
+		
 				if(pid == 0){
 					//queue1 is empty check queue2
+					printf("queue1 is empty\n");
 					pid = popqueue(queue2);
 					if(pid == 0){
+						printf("queue2 is also empty\n");
 						perror("all queues are empty");
 						return 1;
 					}
 				}
-				
-			}else{
+			
+			}
 				printf("sending message to pid %d to run\n", pid);
 				//send message to run
 				//find pcb
@@ -375,7 +380,7 @@ int main(int argc, char **argv){
 					}
 				}//end of successful message send
 			
-			}//end of message send
+			//}//end of message send
 			
 		}//end of send next 
 		//receive message from user
@@ -460,12 +465,14 @@ int main(int argc, char **argv){
 						int x;
 						for(x = 0; x < numSlaves; x++){
 							if(blockptr[x].pid == pid){
+								printf("found pcb for changing queue\n");
 								break;
 							}
 						}
 						if(blockptr[x].currentqueue < 2){
 							//move down
 							blockptr[x].currentqueue++;
+							printf("now in queue%d\n", blockptr[x].currentqueue);
 						}
 						if(blockptr[x].currentqueue == 1){
 							if(pushqueue(queue1, pid) == 1){
