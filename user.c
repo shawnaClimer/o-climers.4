@@ -26,6 +26,7 @@ typedef struct pcb {
 	long timesys;
 	long timeburst;
 	int pid;
+	int currentqueue;
 } process_cb;
 //for shared memory clock
 static int *shared;
@@ -127,18 +128,36 @@ int main(int argc, char **argv){
 	//loop for critical section
 	int timeisup = 0;
 	int timeran = 0;
+	int leftover;
+	int interrupt, interrupted;
+	//initialize random number generator
+	srand((unsigned) time(NULL));
 	//int more = 0;
 	while(timeisup == 0){
 		//signal handler
 		signal(SIGINT, sighandler);
 		
+		interrupted = 0;
 		//look for message type PID critical section "token"
 		if(msgrcv(msqid, &rbuf, MSGSZ, mypid, 0) < 0){
 			//printf("message not received.\n");
 		}else{
-			printf("critical section token received.\n");	
-			//TODO check for I/O interrupt
-			timeran = (QUANTUM * rbuf.mtext[0]);//number of QUANTUMs to run
+			printf("critical section token received.\n");
+			if(rbuf.mtext[0] == 0){
+				timeran = QUANTUM;
+			}else if(rbuf.mtext[0] == 1){
+				timeran = 2 * QUANTUM;
+			}else{
+				timeran = 4 * QUANTUM;
+			}
+			//timeran = (QUANTUM * (rbuf.mtext[0] + 1));//number of QUANTUMs to run
+			
+			//check for I/O interrupt
+			interrupt = rand() % 10;
+			if(interrupt < 3){
+				interrupted = 1;//code for interruption
+				timeran = (rand() % timeran);
+			}
 			
 			//find my pcb
 			int foundpcb = 0;
@@ -154,14 +173,18 @@ int main(int argc, char **argv){
 				printf("found my pcb\n");
 				//check timesys > timeran
 				if(blockptr[i].timesys > (blockptr[i].totalcpu + timeran)){
+					printf("need more time, requesting requeue\n");
 					//more = 1;//needs more time
 					blockptr[i].totalcpu += timeran;
 					blockptr[i].timeburst = timeran;
 				}else{
-					timeran = (blockptr[i].totalcpu + timeran) - blockptr[i].timesys;
-					blockptr[i].totalcpu += timeran;
-					blockptr[i].timeburst = timeran;
+					printf("completed my process. terminating.\n");
+					leftover = ((blockptr[i].totalcpu + timeran) - blockptr[i].timesys);
+					//timeran = ((blockptr[i].totalcpu + timeran) - blockptr[i].timesys);
+					blockptr[i].totalcpu += (timeran - leftover);
+					blockptr[i].timeburst = (timeran - leftover);
 					timeisup = 1;//done
+					timeran = leftover;
 				}
 				
 			}//end found and updated pcb
@@ -176,11 +199,13 @@ int main(int argc, char **argv){
 			sbuf.mtype = 1;
 			sbuf.mtext[0] = mypid;
 			sbuf.mtext[1] = timeisup;//1 for terminated, 0 for re-queue
-			sbuf.mtext[2] = clock[0];
-			sbuf.mtext[3] = clock[1];
-			sbuf.mtext[4] = timeran;
+			sbuf.mtext[2] = interrupted;//1 for interrupted, 0 for not
+			sbuf.mtext[3] = timeran;
+			//sbuf.mtext[2] = clock[0];
+			//sbuf.mtext[3] = clock[1];
+			//sbuf.mtext[4] = timeran;
 			
-			buf_length = sizeof(sbuf.mtext) + 1;
+			//buf_length = sizeof(sbuf.mtext) + 1;
 			//buf_length = 0;
 			//send message
 			if(msgsnd(msqid, &sbuf, MSGSZ, IPC_NOWAIT) < 0){

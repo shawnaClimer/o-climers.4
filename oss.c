@@ -29,6 +29,7 @@ typedef struct pcb {
 	long timesys;
 	long timeburst;
 	int pid;
+	int currentqueue;
 } process_cb;
 
 //for shared memory clock
@@ -134,7 +135,7 @@ int main(int argc, char **argv){
 	}
 	puts(filename);
 	//number of slaves
-	int numSlaves=5;//TODO change 
+	int numSlaves=1;//TODO change 
 	if(sflag){//change numSlaves
 		numSlaves = atoi(x);
 	}
@@ -224,6 +225,10 @@ int main(int argc, char **argv){
 	int currentnum = 0;//keep count of current processes in system
 	int queue0[MAXQUEUE];//create queue0
 	initqueue(queue0);
+	int queue1[MAXQUEUE];
+	initqueue(queue1);
+	int queue2[MAXQUEUE];
+	initqueue(queue2);
 	//for forking children
 	pid_t pids[numSlaves];//pid_t *pidptr points to this
 	pidptr = pids;
@@ -231,9 +236,9 @@ int main(int argc, char **argv){
 	printf("initializing pids[]\n");
 	int i;
 	for(i = 0; i < numSlaves; i++){
-		pids[i] = -1;
+		pids[i] = 1;
 	}
-	printf("pids[] initialized to -1\n");
+	printf("pids[] initialized to 1\n");
 	//printf("%d process id forked.\n", pids[0]);
 	
 	//interval between forking children
@@ -246,12 +251,15 @@ int main(int argc, char **argv){
 	int status;//for wait(&status)
 	int sendnext = 1;//send next process message to run
 	
-	while(totalProcesses < 100 && clock[0] < 5 && (nowtime - starttime) < endTime){
+	//initialize random number generator
+	srand((unsigned) time(NULL));
+	
+	while(totalProcesses < 100 && clock[0] < 2 && (nowtime - starttime) < endTime){
 		//signal handler
 		signal(SIGINT, sighandler);
 		
 		//increment "system" clock
-		clock[1] += 1000;
+		clock[1] += rand() % 1000;
 		if(clock[1] > 1000000000){
 			clock[0] += 1;
 			clock[1] -= 1000000000;
@@ -265,10 +273,11 @@ int main(int argc, char **argv){
 			prevns = currentns;
 			//find empty pids[]
 			for(i = 0; i < numSlaves; i++){
-				if(pids[i] == -1){
+				if(pids[i] == 1){
 					break;
 				}
 			}
+			printf("found open spot at pids[%d]\n", i);
 			pids[i] = fork();
 			if(pids[i] == -1){
 				perror("Failed to fork");
@@ -287,6 +296,8 @@ int main(int argc, char **argv){
 			blockptr[i].pid = pids[i];
 			//set total time in system
 			blockptr[i].timesys = rand() % 100000;
+			printf("process has been given %d time\n", blockptr[i].timesys);
+			blockptr[i].currentqueue = 0;
 			
 			printf("adding to queue\n");
 			//put in queue0
@@ -304,7 +315,7 @@ int main(int argc, char **argv){
 			fprintf(logfile, "OSS: Creating process %d and adding to queue0 at time %d:%d\n", pids[i], clock[0], clock[1]);
 			fclose(logfile);
 			//increment "system" clock
-			clock[1] += 1000;
+			clock[1] += rand() % 1000;
 			if(clock[1] > 1000000000){
 				clock[0] += 1;
 				clock[1] -= 1000000000;
@@ -316,15 +327,30 @@ int main(int argc, char **argv){
 			//check queue0
 			pid = popqueue(queue0);
 			if(pid == 0){
-				//empty queue0
-				//TODO check next queues
+				//queue0 is empty check queue1
+				pid = popqueue(queue1);
+				if(pid == 0){
+					//queue1 is empty check queue2
+					pid = popqueue(queue2);
+					if(pid == 0){
+						perror("all queues are empty");
+						return 1;
+					}
+				}
+				
 			}else{
 				printf("sending message to pid %d to run\n", pid);
 				//send message to run
-				thispid = pid;
-				sbuf.mtype = thispid;
-				sbuf.mtext[0] = 1;//run for 1 QUANTUM
-				buf_length = sizeof(sbuf.mtext) + 1;
+				//find pcb
+				int x;
+				for (x = 0; x < numSlaves; x++){
+					if(blockptr[x].pid == pid){
+						break;
+					}
+				}
+				sbuf.mtype = pid;
+				sbuf.mtext[0] = blockptr[x].currentqueue;//to determine num QUANTUMs
+				//buf_length = sizeof(sbuf.mtext) + 1;
 				if(msgsnd(msqid, &sbuf, MSGSZ, IPC_NOWAIT) < 0){
 				//if(msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
 					printf("%d, %d, %d, %d\n", msqid, sbuf.mtype);//, sbuf.mtext[0], buf_length);
@@ -342,7 +368,7 @@ int main(int argc, char **argv){
 					fclose(logfile);
 				
 					//increment "system" clock
-					clock[1] += 1000;
+					clock[1] += rand() % 1000;
 					if(clock[1] > 1000000000){
 						clock[0] += 1;
 						clock[1] -= 1000000000;
@@ -379,23 +405,25 @@ int main(int argc, char **argv){
 						perror("Log file failed to open");
 						return -1;
 					}
-					fprintf(logfile, "OSS: Child pid %d is terminating at time %d:%d. It ran for %d this burst\n", pid, rbuf.mtext[2], rbuf.mtext[3], rbuf.mtext[4]);
+					fprintf(logfile, "OSS: Child pid %d is terminating at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
 					fclose(logfile);
 					
 					pid = wait(&status);//make sure child terminated
-	//add back in	//currentnum--;
+					currentnum--;
 					//find in pids[]
 					int x;
 					for(x = 0; x < numSlaves; x++){
 						if(pids[x] == pid){
 							printf("found pid that terminated\n");
-							pids[x] = -1;
+							pids[x] = 1;
 							break;
 						}
 					}
 					//TODO update pcb
+					printf("pcb block at %d has values: pid = %d total time in system = %d and totalcpu = %d\n", x, blockptr[x].pid, blockptr[x].timesys, blockptr[x].totalcpu);
 					
 				//end of if process terminates	
+				//re queue process
 				}else if(rbuf.mtext[1] == 0){
 					//requeue
 					//write to file
@@ -405,17 +433,75 @@ int main(int argc, char **argv){
 						perror("Log file failed to open");
 						return -1;
 					}
-					fprintf(logfile, "OSS: Child pid %d is re queueing at time %d:%d. It ran for %d this burst\n", pid, rbuf.mtext[2], rbuf.mtext[3], rbuf.mtext[4]);
+					fprintf(logfile, "OSS: Child pid %d is re queueing at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
 					fclose(logfile);
 					
 					//requeue
-					if(pushqueue(queue0, pid) == 1){
-						//successful pushqueue
-						printf("pid %d pushed to queue0\n");
+					//interrupted so move to queue0
+					if(rbuf.mtext[2] == 1){
+						if(pushqueue(queue0, pid) == 1){
+							//successful pushqueue
+							printf("pid %d pushed to queue0\n");
+							//write to file
+							FILE *logfile;
+							logfile = fopen(filename, "a");
+							if(logfile == NULL){
+								perror("Log file failed to open");
+								return -1;
+							}
+							fprintf(logfile, "OSS: Child pid %d was interrupted. Putting in queue0 at %d:%d\n", pid, clock[0], clock[1]);
+							fclose(logfile);
+						}else{
+							perror("push to queue");
+							return 1;
+						}
+					//not interrupted, move to next queue down
 					}else{
-						perror("push to queue");
-						return 1;
+						int x;
+						for(x = 0; x < numSlaves; x++){
+							if(blockptr[x].pid == pid){
+								break;
+							}
+						}
+						if(blockptr[x].currentqueue < 2){
+							//move down
+							blockptr[x].currentqueue++;
+						}
+						if(blockptr[x].currentqueue == 1){
+							if(pushqueue(queue1, pid) == 1){
+								//write to file
+								FILE *logfile;
+								logfile = fopen(filename, "a");
+								if(logfile == NULL){
+									perror("Log file failed to open");
+									return -1;
+								}
+								fprintf(logfile, "OSS: Child pid %d put in queue1 at %d:%d\n", pid, clock[0], clock[1]);
+								fclose(logfile);
+							}
+						}else{
+							if(pushqueue(queue2, pid) == 1){
+								//write to file
+								FILE *logfile;
+								logfile = fopen(filename, "a");
+								if(logfile == NULL){
+									perror("Log file failed to open");
+									return -1;
+								}
+								fprintf(logfile, "OSS: Child pid %d put in queue2 at %d:%d\n", pid, clock[0], clock[1]);
+								fclose(logfile);
+							}
+						}
 					}
+					
+					//increment "system" clock
+					clock[1] += rand() % 1000;
+					if(clock[1] > 1000000000){
+						clock[0] += 1;
+						clock[1] -= 1000000000;
+					}
+					
+					
 				}//end re queue process
 			}//end message receive
 		}//end check for messages
@@ -432,6 +518,7 @@ int main(int argc, char **argv){
 		
 	//printf("User process %ld exited with status 0x%x.\n", (long)pid, status);
 	//sleep(2);
+	//TODO add back in when processing more than one
 	//terminate children
 	while(currentnum > 0){
 		currentnum--;
