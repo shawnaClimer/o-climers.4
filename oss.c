@@ -135,7 +135,7 @@ int main(int argc, char **argv){
 	}
 	puts(filename);
 	//number of slaves
-	int numSlaves=1;//TODO change 
+	int numSlaves=5; 
 	if(sflag){//change numSlaves
 		numSlaves = atoi(x);
 	}
@@ -242,7 +242,7 @@ int main(int argc, char **argv){
 	//printf("%d process id forked.\n", pids[0]);
 	
 	//interval between forking children
-	int timetofork = 1000000;
+	int timetofork = 10000;
 	int currentns, prevns = 0;
 	//pid
 	pid_t pid;
@@ -250,6 +250,7 @@ int main(int argc, char **argv){
 	int childsec, childns;//for time sent by child
 	int status;//for wait(&status)
 	int sendnext = 1;//send next process message to run
+	int loglength = 0;//for log file
 	
 	//initialize random number generator
 	srand((unsigned) time(NULL));
@@ -306,14 +307,17 @@ int main(int argc, char **argv){
 				return 1;
 			}
 			//write to file
-			FILE *logfile;
-			logfile = fopen(filename, "a");
-			if(logfile == NULL){
-				perror("Log file failed to open");
-				return -1;
+			if(loglength < 1000){
+				FILE *logfile;
+				logfile = fopen(filename, "a");
+				if(logfile == NULL){
+					perror("Log file failed to open");
+					return -1;
+				}
+				fprintf(logfile, "OSS: Creating process %d and adding to queue0 at time %d:%d\n", pids[i], clock[0], clock[1]);
+				fclose(logfile);
+				loglength++;
 			}
-			fprintf(logfile, "OSS: Creating process %d and adding to queue0 at time %d:%d\n", pids[i], clock[0], clock[1]);
-			fclose(logfile);
 			//increment "system" clock
 			clock[1] += rand() % 1000;
 			if(clock[1] > 1000000000){
@@ -363,14 +367,17 @@ int main(int argc, char **argv){
 					return 1;
 				}else{
 					//write to file
-					FILE *logfile;
-					logfile = fopen(filename, "a");
-					if(logfile == NULL){
-						perror("Log file failed to open");
-						return -1;
+					if(loglength < 1000){
+						FILE *logfile;
+						logfile = fopen(filename, "a");
+						if(logfile == NULL){
+							perror("Log file failed to open");
+							return -1;
+						}
+						fprintf(logfile, "OSS: Dispatching process %d at time %d:%d\n", pid, clock[0], clock[1]);
+						fclose(logfile);
+						loglength++;
 					}
-					fprintf(logfile, "OSS: Dispatching process %d at time %d:%d\n", pid, clock[0], clock[1]);
-					fclose(logfile);
 				
 					//increment "system" clock
 					clock[1] += rand() % 1000;
@@ -404,14 +411,17 @@ int main(int argc, char **argv){
 				if(rbuf.mtext[1] == 1){
 					//process is terminating
 					//write to file
-					FILE *logfile;
-					logfile = fopen(filename, "a");
-					if(logfile == NULL){
-						perror("Log file failed to open");
-						return -1;
+					if(loglength < 1000){
+						FILE *logfile;
+						logfile = fopen(filename, "a");
+						if(logfile == NULL){
+							perror("Log file failed to open");
+							return -1;
+						}
+						fprintf(logfile, "OSS: Child pid %d is terminating at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
+						fclose(logfile);
+						loglength++;
 					}
-					fprintf(logfile, "OSS: Child pid %d is terminating at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
-					fclose(logfile);
 					
 					pid = wait(&status);//make sure child terminated
 					currentnum--;
@@ -432,15 +442,17 @@ int main(int argc, char **argv){
 				}else if(rbuf.mtext[1] == 0){
 					//requeue
 					//write to file
-					FILE *logfile;
-					logfile = fopen(filename, "a");
-					if(logfile == NULL){
-						perror("Log file failed to open");
-						return -1;
+					if(loglength < 1000){
+						FILE *logfile;
+						logfile = fopen(filename, "a");
+						if(logfile == NULL){
+							perror("Log file failed to open");
+							return -1;
+						}
+						fprintf(logfile, "OSS: Child pid %d is re queueing at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
+						fclose(logfile);
+						loglength++;
 					}
-					fprintf(logfile, "OSS: Child pid %d is re queueing at time %d:%d. It ran for %d this burst\n", pid, clock[0], clock[1], rbuf.mtext[3]);
-					fclose(logfile);
-					
 					//requeue
 					//interrupted so move to queue0
 					if(rbuf.mtext[2] == 1){
@@ -448,14 +460,17 @@ int main(int argc, char **argv){
 							//successful pushqueue
 							printf("pid %d pushed to queue0\n");
 							//write to file
-							FILE *logfile;
-							logfile = fopen(filename, "a");
-							if(logfile == NULL){
-								perror("Log file failed to open");
-								return -1;
+							if(loglength < 1000){
+								FILE *logfile;
+								logfile = fopen(filename, "a");
+								if(logfile == NULL){
+									perror("Log file failed to open");
+									return -1;
+								}
+								fprintf(logfile, "OSS: Child pid %d was interrupted. Putting in queue0 at %d:%d\n", pid, clock[0], clock[1]);
+								fclose(logfile);
+								loglength++;
 							}
-							fprintf(logfile, "OSS: Child pid %d was interrupted. Putting in queue0 at %d:%d\n", pid, clock[0], clock[1]);
-							fclose(logfile);
 						}else{
 							perror("push to queue");
 							return 1;
@@ -477,26 +492,32 @@ int main(int argc, char **argv){
 						if(blockptr[x].currentqueue == 1){
 							if(pushqueue(queue1, pid) == 1){
 								//write to file
-								FILE *logfile;
-								logfile = fopen(filename, "a");
-								if(logfile == NULL){
-									perror("Log file failed to open");
-									return -1;
+								if(loglength < 1000){
+									FILE *logfile;
+									logfile = fopen(filename, "a");
+									if(logfile == NULL){
+										perror("Log file failed to open");
+										return -1;
+									}
+									fprintf(logfile, "OSS: Child pid %d put in queue1 at %d:%d\n", pid, clock[0], clock[1]);
+									fclose(logfile);
+									loglength++;
 								}
-								fprintf(logfile, "OSS: Child pid %d put in queue1 at %d:%d\n", pid, clock[0], clock[1]);
-								fclose(logfile);
 							}
 						}else{
 							if(pushqueue(queue2, pid) == 1){
 								//write to file
-								FILE *logfile;
-								logfile = fopen(filename, "a");
-								if(logfile == NULL){
-									perror("Log file failed to open");
-									return -1;
+								if(loglength < 1000){
+									FILE *logfile;
+									logfile = fopen(filename, "a");
+									if(logfile == NULL){
+										perror("Log file failed to open");
+										return -1;
+									}
+									fprintf(logfile, "OSS: Child pid %d put in queue2 at %d:%d\n", pid, clock[0], clock[1]);
+									fclose(logfile);
+									loglength++;
 								}
-								fprintf(logfile, "OSS: Child pid %d put in queue2 at %d:%d\n", pid, clock[0], clock[1]);
-								fclose(logfile);
 							}
 						}
 					}
