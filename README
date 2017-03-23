@@ -1,0 +1,11 @@
+to build executables, type make oss user
+
+My program runs oss as the master process. It updates a shared memory clock with a random amount of time each time it does work (forks a process, pops a queue and dispatches the process, writes to file, etc.). The default setting is for up to 5 processes simultaneously (but can be changed via command line argument). Whenever a process terminates, it forks a new one until it has forked 100 total. 
+
+Each user process waits until it receives a message from oss allowing it to enter critical section. It sends a message back to oss when it has terminated, interrupted, or completed its QUANTUM. Then oss either re queues it or replaces it if it terminated.
+If it is interrupted, it goes back to queue0, otherwise it moves to the next queue down from where it was (queue number is stored in PCB). Queue0 gets 1 QUANTUM, queue1 gets 2, and queue2 gets 4. QUANTUM size is set in constants.h.
+
+There is a PCB block in shared memory. It keeps track of data for each active process. 
+At the end, statistics that were collected are displayed. Each time a process is forked, its start time in seconds and ns is recorded in its PCB. Then, when it is terminated, the end time is used to find total running time. This gets added for each process and then divided by the number of processes. Each time a process is queued, the time is set in its PCB. Likewise, when it is dispatched, the current time is used to factor its wait time. This is added up for each process and then divided by the number of processes for the average.
+
+version control at https://github.com/shawnaClimer/o-climers.4
