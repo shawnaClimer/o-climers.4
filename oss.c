@@ -16,21 +16,7 @@
 #include "constants.h"
 #include "queue.h"
 
-//for message queue
-#define MSGSZ	20
-typedef struct msgbuf {
-	long mtype;
-	int mtext[MSGSZ];
-} message_buf;
 
-//for PCBs
-typedef struct pcb {
-	long totalcpu;
-	long timesys;
-	long timeburst;
-	int pid;
-	int currentqueue;
-} process_cb;
 
 //for shared memory clock
 static int *shared;
@@ -252,6 +238,21 @@ int main(int argc, char **argv){
 	int sendnext = 1;//send next process message to run
 	int loglength = 0;//for log file
 	
+	//statistics
+	long waittime = 0;
+	long waittimesec = 0;
+	long waittimens = 0;
+	//long waittimes[100];
+	long cpuidle = 0;
+	long turnaround = 0;
+	long turnaroundsec = 0;
+	long turnaroundns = 0;
+	//long turnarounds[100];
+	//long starttimes[100];
+	int processescompleted = 0;
+	//int randtime = 0;
+	int first = 1;
+	
 	//initialize random number generator
 	srand((unsigned) time(NULL));
 	
@@ -260,7 +261,8 @@ int main(int argc, char **argv){
 		signal(SIGINT, sighandler);
 		
 		//increment "system" clock
-		clock[1] += rand() % 1000;
+		//randtime = rand() % 1000;
+		clock[1] += rand() % 1000;//randtime;
 		if(clock[1] > 1000000000){
 			clock[0] += 1;
 			clock[1] -= 1000000000;
@@ -270,6 +272,10 @@ int main(int argc, char **argv){
 		currentns = clock[1];
 		//if time to fork new process
 		if(((currentns - prevns) >= timetofork) && (currentnum < numSlaves)){
+			if(first == 1){
+				first = 0;
+				cpuidle = clock[1];
+			}
 			//set new previous 
 			prevns = currentns;
 			//find empty pids[]
@@ -291,6 +297,7 @@ int main(int argc, char **argv){
 			}
 			totalProcesses++;	
 			currentnum++;
+			//starttimes[totalProcesses] = (clock[1]);
 			
 			printf("adding %d to pcb\n", pids[i]);
 			//initialize pcb pid
@@ -299,6 +306,8 @@ int main(int argc, char **argv){
 			blockptr[i].timesys = rand() % 100000;
 			printf("process has been given %d time\n", blockptr[i].timesys);
 			blockptr[i].currentqueue = 0;
+			blockptr[i].startsec = clock[0];
+			blockptr[i].startns = clock[1];
 			
 			printf("adding to queue\n");
 			//put in queue0
@@ -306,6 +315,8 @@ int main(int argc, char **argv){
 				perror("Failed to add to queue0");
 				return 1;
 			}
+			blockptr[i].waitsec = clock[0];
+			blockptr[i].waitns = clock[1];
 			//write to file
 			if(loglength < 1000){
 				FILE *logfile;
@@ -357,6 +368,10 @@ int main(int argc, char **argv){
 						break;
 					}
 				}
+				//add wait times
+				waittimesec += (clock[0] - blockptr[x].waitsec);
+				waittimens += (clock[1] - blockptr[x].waitns);
+				
 				sbuf.mtype = pid;
 				sbuf.mtext[0] = blockptr[x].currentqueue;//to determine num QUANTUMs
 				//buf_length = sizeof(sbuf.mtext) + 1;
@@ -410,6 +425,7 @@ int main(int argc, char **argv){
 				//code from user
 				if(rbuf.mtext[1] == 1){
 					//process is terminating
+					processescompleted++;
 					//write to file
 					if(loglength < 1000){
 						FILE *logfile;
@@ -434,13 +450,26 @@ int main(int argc, char **argv){
 							break;
 						}
 					}
-					//TODO update pcb
+					//update pcb
 					printf("pcb block at %d has values: pid = %d total time in system = %d and totalcpu = %d\n", x, blockptr[x].pid, blockptr[x].timesys, blockptr[x].totalcpu);
+					
+					turnaroundsec += (clock[0] - blockptr[x].startsec);
+					turnaroundns += (clock[1] - blockptr[x].startns);
+					
 					
 				//end of if process terminates	
 				//re queue process
 				}else if(rbuf.mtext[1] == 0){
-					//requeue
+					//find pcb and set wait time
+					int x;
+					for(x = 0; x < numSlaves; x++){
+						if(pids[x] == pid){
+							break;
+						}
+					}
+					blockptr[x].waitsec = clock[0];
+					blockptr[x].waitns = clock[1];
+					
 					//write to file
 					if(loglength < 1000){
 						FILE *logfile;
@@ -554,6 +583,12 @@ int main(int argc, char **argv){
 	} 
 	//kill(0, SIGQUIT);
 	printf("%d total processes were created.\n", totalProcesses);
+	printf("%d total processes completed\n", processescompleted);
+	waittime = ((waittimesec * 1000000000) + waittimens);
+	printf("Average wait time: %d ns\n", (waittime / processescompleted));
+	printf("CPU idle time: %d ns\n", cpuidle);
+	turnaround = ((turnaroundsec * 1000000000) + turnaroundns);
+	printf("Turnaround average: %d ns\n", (turnaround / processescompleted));
 	//code for freeing shared memory
 	if(detachshared() == -1){
 		return 1;

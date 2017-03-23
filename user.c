@@ -14,20 +14,7 @@
 #include <sys/msg.h>
 #include "constants.h"
 
-//for message queue
-#define MSGSZ	20
-typedef struct msgbuf {
-	long mtype;
-	int mtext[MSGSZ];
-} message_buf;
-//for PCBs
-typedef struct pcb {
-	long totalcpu;
-	long timesys;
-	long timeburst;
-	int pid;
-	int currentqueue;
-} process_cb;
+
 //for shared memory clock
 static int *shared;
 
@@ -128,7 +115,7 @@ int main(int argc, char **argv){
 	//loop for critical section
 	int timeisup = 0;
 	int timeran = 0;
-	int leftover;
+	//int leftover;
 	int interrupt, interrupted;
 	//initialize random number generator
 	srand((unsigned) time(NULL));
@@ -179,12 +166,14 @@ int main(int argc, char **argv){
 					blockptr[i].timeburst = timeran;
 				}else{
 					printf("completed my process. terminating.\n");
-					leftover = ((blockptr[i].totalcpu + timeran) - blockptr[i].timesys);
+					timeran = (blockptr[i].timesys - blockptr[i].totalcpu);
+					//leftover = ((blockptr[i].totalcpu + timeran) - blockptr[i].timesys);
+					//timeran = (timeran - leftover);
 					//timeran = ((blockptr[i].totalcpu + timeran) - blockptr[i].timesys);
-					blockptr[i].totalcpu += (timeran - leftover);
-					blockptr[i].timeburst = (timeran - leftover);
+					blockptr[i].totalcpu += timeran;
+					blockptr[i].timeburst = timeran;
 					timeisup = 1;//done
-					timeran = leftover;
+					//timeran = leftover;
 				}
 				
 			}//end found and updated pcb
